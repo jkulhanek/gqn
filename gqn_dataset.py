@@ -1,5 +1,5 @@
 import bisect
-from typing import TypeVar
+from typing import TypeVar, List
 import collections
 import os
 import io
@@ -12,10 +12,34 @@ import random
 import itertools
 
 
+DATASET_PATH = os.path.join(os.path.expanduser(os.environ.get('DATASETS_PATH', '~/datasets')), 'gqn')
 Context = collections.namedtuple('Context', ['frames', 'cameras'])
 Scene = collections.namedtuple('Scene', ['frames', 'cameras'])
 
 T_co = TypeVar('T_co', covariant=True)
+
+
+class MappedDataset(Dataset):
+    def __init__(self, inner, transform=None):
+        self._transform = transform
+        self.inner = inner
+
+    def __len__(self):
+        return len(self.inner)
+
+    def __getitem__(self, idx):
+        x = self.inner[idx]
+        if self._transform is not None:
+            x = self._transform(x)
+        return x
+
+    def map(self, transform):
+        if self._transform is not None:
+            def transform_fn(x):
+                return transform(self._transform(x))
+        else:
+            transform_fn = transform
+        return MappedDataset(self.inner, transform_fn)
 
 
 class EnvironmentDataset(Dataset[T_co]):
@@ -27,7 +51,7 @@ class EnvironmentDataset(Dataset[T_co]):
         r, s = [], 0
         for e in sequence:
             r.append(e + s)
-            s += l
+            s += e
         return r
 
     def __init__(self, environment_sizes) -> None:
@@ -64,7 +88,7 @@ class EnvironmentDataset(Dataset[T_co]):
             return values
         else:
             dataset_idx, sample_idx = map_index(idx)
-            return get_sample(dataset_idx, sample_idx)
+            return self.get_sample(dataset_idx, sample_idx)
 
     def get_environment(self, idx):
         if idx < 0:
@@ -81,12 +105,6 @@ class EnvironmentDataset(Dataset[T_co]):
     def get_sample(self, environment_id, sample_id):
         raise NotImplementedError()
 
-    @ property
-    def cummulative_sizes(self):
-        warnings.warn("cummulative_sizes attribute is renamed to "
-                      "cumulative_sizes", DeprecationWarning, stacklevel=2)
-        return self.cumulative_sizes
-
 
 def concatenate_shallow(xs):
     if len(xs) == 0:
@@ -102,7 +120,7 @@ def concatenate_shallow(xs):
             val = []
             for x in xs:
                 val.append(x[k])
-            res[k] = val
+            ret[k] = val
         return ret
     return xs
 
@@ -114,7 +132,7 @@ class QuerySingleTargetWrapper(Dataset):
         self.epoch = 0
 
     def __len__(self):
-        return len(inner)
+        return len(self.inner)
 
     def set_epoch(self, epoch):
         self.epoch = epoch
@@ -133,8 +151,8 @@ class QuerySingleTargetWrapper(Dataset):
         env_start, env_end = self.inner.environment_range(environment_idx)
 
         gen = random.Random(self.pair_numbers(epoch, idx))
-        num_views = random.randint(1, self.max_num_views)
-        context_idx = random.sample(range(env_start, env_end - 1), num_views)
+        num_views = gen.randint(1, self.max_num_views)
+        context_idx = gen.sample(range(env_start, env_end - 1), num_views)
 
         # Skip idx
         context_idx = [x + 1 if x >= idx else x for x in context_idx]
@@ -237,9 +255,15 @@ def transform_viewpoint(v):
     return v_hat
 
 
+def split_name(dataset_name: str):
+    split = dataset_name.rindex('-')
+    return dataset_name[:split], dataset_name[split + 1:]
+
+
 class GQNDataset(EnvironmentDataset):
-    def __init__(self, root_dir, name, transform=None, target_transform=None):
-        self.root_dir = root_dir
+    def __init__(self, name, transform=None, target_transform=None):
+        name, split = split_name(name)
+        self.root_dir = os.path.join(DATASET_PATH, f'{name}-th', split)
         self.transform = transform
         self.target_transform = target_transform
         info = _DATASETS[name]
@@ -259,15 +283,26 @@ class GQNDataset(EnvironmentDataset):
         return images, viewpoints
 
 
-def load_gqn_dataset(name, seed=42):
-    if name == "Room":
-        max_num_views = 5
-    elif name == "Jaco":
+def load_gqn_dataset(name):
+    dataset_name, split = split_name(name)
+    if "jaco" in dataset_name:
         max_num_views = 7
-    elif D == "Labyrinth":
+    elif "mazes" in dataset_name:
         max_num_views = 20
-    elif D == "Shepard-Metzler":
+    elif "shepard" in dataset_name:
         max_num_views = 15
+    elif 'rooms' in dataset_name:
+        max_num_views = 5
+    else:
+        raise ValueError(f'Dataset {name} is not supported')
 
-    dataset = GQNDataset(root_dir, name, transform, target_transform)
+    def transform_batch(batch):
+        context, query = batch
+        q_img, q_pose = query
+        c_img, c_pose = context
+        return dict(query_image=q_img, query_pose=q_pose, context_images=c_img, context_poses=c_pose)
+
+    dataset = GQNDataset(name, target_transform=transform_viewpoint)
     dataset = QuerySingleTargetWrapper(dataset, max_num_views=max_num_views)
+    dataset = MappedDataset(dataset, transform_batch)
+    return dataset

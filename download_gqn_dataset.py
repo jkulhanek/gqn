@@ -88,6 +88,7 @@ def download_dataset(name):
         for blob in bucket.list_blobs(prefix=f'{name}/'):
             if blob.path in existing_data:
                 continue
+            blob.
             rest_path = blob.path[:len(f'{name}/')]
             split = rest_path[:rest_path.index('/')]
 
