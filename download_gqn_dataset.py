@@ -7,6 +7,7 @@ from google.cloud import storage
 from multiprocessing import Process
 import tempfile
 import tensorflow as tf
+from tqdm import tqdm
 import json
 
 
@@ -72,59 +73,59 @@ _DATASETS = dict(
 
 
 def download_dataset(name):
-    path = os.join(DATASET_PATH, f'{name}-th')
+    path = os.path.join(DATASET_PATH, f'{name}-th')
     os.makedirs(os.path.join(path, 'train'), exist_ok=True)
     os.makedirs(os.path.join(path, 'test'), exist_ok=True)
     storage_client = storage.Client.create_anonymous_client()
     bucket = storage_client.bucket('gqn-dataset')
     dataset_info = _DATASETS[name]
     with open(os.path.join(path, 'info.json'), 'w+') as f:
-        json.dump(dataset_info.__dict__, f)
+        json.dump(dataset_info._asdict(), f)
     existing_data = []
-    if os.path.exists(os.path.join(path, 'downloaded.txt')):
-        existing_data = [x[:-1] for x in open(os.path.join(path, 'downloaded.txt'), 'r')]
     tot = collections.defaultdict(lambda: 0)
+    if os.path.exists(os.path.join(path, 'downloaded.txt')):
+        existing_data = [x[:-1].split(' ') for x in open(os.path.join(path, 'downloaded.txt'), 'r')]
+    if existing_data:    
+        tot_train, tot_test, existing_data = tuple(zip(*existing_data))
+        tot['train'] = max(map(int, tot_train))
+        tot['test'] = max(map(int, tot_test))
     with open(os.path.join(path, 'downloaded.txt'), 'a+') as downloaded_f:
-        for blob in bucket.list_blobs(prefix=f'{name}/'):
-            if blob.path in existing_data:
+        for blob in tqdm(bucket.list_blobs(prefix=f'{name}/'), total=dataset_info.train_size + dataset_info.test_size):
+            if blob.name in existing_data:
                 continue
-            rest_path = blob.path[:len(f'{name}/')]
+            rest_path = blob.name[len(f'{name}/'):]
             split = rest_path[:rest_path.index('/')]
 
             def save_file(f):
                 # Read file and preprocess
-                engine = tf.python_io.tf_record_iterator(f)
+                engine = tf.data.TFRecordDataset(f) 
                 for i, raw_data in enumerate(engine):
-                    file_path = os.path.join(path, split, f'{tot.get(split)+i}.pt.gz')
-                    print(f' [-] converting scene {rest_path}-{i} into {path}')
-                    p = Process(target=convert_raw_to_numpy, args=(dataset_info, raw_data, file_path, True))
-                    p.start()
-                    p.join()
+                    file_path = os.path.join(path, split, f'{tot[split]+i}.pt.gz')
+                    # p = Process(target=convert_raw_to_numpy, args=(dataset_info, raw_data, file_path, True))
+                    # p.start()
+                    # p.join()
+                    convert_raw_to_numpy(dataset_info, raw_data, file_path, True)
                 tot[split] += i
-                print(blob.path, file=downloaded_f)
+                print(f'{tot["train"]} {tot["test"]} {blob.name}', file=downloaded_f)
                 downloaded_f.flush()
 
-            if os.path.exists(os.path.join(DATASET_PATH, 'gqn', blob.path)):
-                with open(os.path.join(DATASET_PATH, 'gqn', blob.path), 'rb') as f:
-                    save_file(f)
+            if os.path.exists(os.path.join(DATASET_PATH, 'gqn', blob.name)):
+                save_file(os.path.join(DATASET_PATH, 'gqn', blob.name))
             else:
-                with tempfile.TemporaryFile('wb+') as f:
+                with tempfile.NamedTemporaryFile('wb+') as f:
                     blob.download_to_file(f)
                     f.flush()
                     f.seek(0)
-                    save_file(f)
-
-
-def _convert_frame_data(jpeg_data):
-    decoded_frames = tf.image.decode_jpeg(jpeg_data)
-    return tf.image.convert_image_dtype(decoded_frames, dtype=tf.float32)
+                    save_file(f.name)
+                    
 
 
 def preprocess_frames(dataset_info, example, jpeg='False'):
     """Instantiates the ops used to preprocess the frames data."""
     frames = tf.concat(example['frames'], axis=0)
     if not jpeg:
-        frames = tf.map_fn(_convert_frame_data, tf.reshape(frames, [-1]), dtype=tf.float32, back_prop=False)
+        frames = tf.image.decode_jpeg(tf.reshape(frames, [-1]))
+        frames = tf.image.convert_image_dtype(decoded_frames, dtype=tf.float32)
         dataset_image_dimensions = tuple([dataset_info.frame_size] * 2 + [3])
         frames = tf.reshape(frames, (-1, dataset_info.sequence_size) + dataset_image_dimensions)
         if (64 and 64 != dataset_info.frame_size):
@@ -132,7 +133,7 @@ def preprocess_frames(dataset_info, example, jpeg='False'):
             new_frame_dimensions = (64,) * 2 + (3,)
             frames = tf.image.resize_bilinear(frames, new_frame_dimensions[:2], align_corners=True)
             frames = tf.reshape(frames, (-1, dataset_info.sequence_size) + new_frame_dimensions)
-    return frames
+    return frames.numpy()
 
 
 def preprocess_cameras(dataset_info, example, raw):
@@ -147,9 +148,9 @@ def preprocess_cameras(dataset_info, example, raw):
         pitch = raw_pose_params[:, :, 4:5]
         cameras = tf.concat(
             [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=2)
-        return cameras
+        return cameras.numpy()
     else:
-        return raw_pose_params
+        return raw_pose_params.numpy()
 
 
 def _get_dataset_files(dataset_info, mode, root):
@@ -166,18 +167,15 @@ def encapsulate(frames, cameras):
 
 def convert_raw_to_numpy(dataset_info, raw_data, path, jpeg=False):
     feature_map = {
-        'frames': tf.FixedLenFeature(
+        'frames': tf.io.FixedLenFeature(
             shape=dataset_info.sequence_size, dtype=tf.string),
-        'cameras': tf.FixedLenFeature(
+        'cameras': tf.io.FixedLenFeature(
             shape=[dataset_info.sequence_size * 5],
             dtype=tf.float32)
     }
-    example = tf.parse_single_example(raw_data, feature_map)
+    example = tf.io.parse_single_example(raw_data, feature_map)
     frames = preprocess_frames(dataset_info, example, jpeg)
     cameras = preprocess_cameras(dataset_info, example, jpeg)
-    with tf.train.SingularMonitoredSession() as sess:
-        frames = sess.run(frames)
-        cameras = sess.run(cameras)
     scene = encapsulate(frames, cameras)
     with gzip.open(path, 'wb') as f:
         torch.save(scene, f)
@@ -193,7 +191,7 @@ def show_frame(frames, scene, views):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('dataset', choices=list(_DATASETS.keys()) + 'all')
+    parser.add_argument('dataset', choices=list(_DATASETS.keys()) + ['all'])
     args = parser.parse_args()
     dataset = args.dataset
     if dataset == 'all':
