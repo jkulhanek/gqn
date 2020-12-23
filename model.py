@@ -8,7 +8,7 @@ from torch.utils.data import random_split
 from torch.distributions import Normal
 from torch.distributions.kl import kl_divergence
 from torch.optim.lr_scheduler import _LRScheduler
-from typing import Literal
+from utils import Literal
 
 from torchvision.datasets.mnist import MNIST
 from torchvision import transforms

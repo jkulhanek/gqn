@@ -1,8 +1,17 @@
 import pytorch_lightning as pl
 import inspect
-import typing
 import logging
 import sys
+try:
+    from typing import Literal
+except(ImportError):
+    # Literal polyfill
+    class _Literal:
+        @classmethod
+        def __getitem__(cls, key):
+            tp = key[0] if isinstance(key, tuple) else key
+            return type(tp)
+    Literal = _Literal()
 
 
 def setup_logging(level=logging.INFO):
@@ -152,7 +161,7 @@ def add_arguments(parser, function_or_cls):
         name = p.name.replace('_', '-')
         annotation = p.annotation
         help = ''
-        if getattr(annotation, '__origin__', None) == typing.Literal:
+        if getattr(getattr(annotation, '__origin__', None), '_name', None) == 'Literal':
             parser.add_argument(f'--{name}', type=type(annotation.__args__[0]), choices=annotation.__args__, default=p.default, help=f'{help} [{p.default}]')
         elif isinstance(p.default, bool):
             parser.set_defaults(**{name: p.default})

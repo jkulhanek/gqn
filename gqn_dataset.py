@@ -1,5 +1,6 @@
 import bisect
-from typing import TypeVar, List, Literal
+from typing import TypeVar, List
+from utils import Literal
 import collections
 import os
 import numpy as np
@@ -12,7 +13,6 @@ from torchvision.transforms import ToTensor, Resize
 from torch.utils.data import Dataset
 import random
 import itertools
-import pytorch_lightning as pl
 
 
 DATASET_PATH = os.path.join(os.path.expanduser(os.environ.get('DATASETS_PATH', '~/datasets')), 'gqn')
