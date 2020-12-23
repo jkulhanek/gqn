@@ -82,6 +82,16 @@ def main():
     trainer = build_trainer(**bind_arguments(args, build_trainer))
     (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
+    # Set update epoch hook for datasets
+    train_dataset = train_dataloader.dataset
+    _old_on_train_epoch_start = trainer.on_train_epoch_start
+
+    def on_train_epoch_start(self, *args, **kwargs):
+        train_dataset.inner.set_epoch(trainer.current_epoch)
+        _old_on_train_epoch_start(*args, **kwargs)
+    trainer.on_train_epoch_start = on_train_epoch_start
+
+    # Start the training
     trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=test_dataloader)
 
     # trainer.test(model, test_dataloader)

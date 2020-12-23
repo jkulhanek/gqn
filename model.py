@@ -432,11 +432,9 @@ class GQNModel(pl.LightningModule):
         t = self.global_step
         sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e5)), self.sigma_f)
         elbo = self.gqn(x, v, v_q, x_q, sigma)
-        return -elbo.mean()
-
-    def on_train_epoch_start(self):
-        self.train_dataloader.dataset.set_epoch(self.current_epoch)
-        self.val_dataloader.dataset.set_epoch(self.current_epoch)
+        loss = -elbo.mean()
+        self.log('loss', loss, prog_bar=True)
+        return loss
 
     def validation_step(self, batch, batch_idx):
         x_test, v_test, x_q_test, v_q_test = batch['context_images'], batch['context_poses'], batch['query_image'], batch['query_pose']
