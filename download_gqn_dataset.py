@@ -4,7 +4,6 @@ import collections
 import torch
 import gzip
 from google.cloud import storage
-from multiprocessing import Process
 import tempfile
 import tensorflow as tf
 from tqdm import tqdm
@@ -118,7 +117,6 @@ def download_dataset(name):
                     f.flush()
                     f.seek(0)
                     save_file(f.name)
-                    
 
 
 def preprocess_frames(dataset_info, example, jpeg='False'):
@@ -126,7 +124,7 @@ def preprocess_frames(dataset_info, example, jpeg='False'):
     frames = tf.concat(example['frames'], axis=0)
     if not jpeg:
         frames = tf.image.decode_jpeg(tf.reshape(frames, [-1]))
-        frames = tf.image.convert_image_dtype(decoded_frames, dtype=tf.float32)
+        frames = tf.image.convert_image_dtype(frames, dtype=tf.float32)
         dataset_image_dimensions = tuple([dataset_info.frame_size] * 2 + [3])
         frames = tf.reshape(frames, (-1, dataset_info.sequence_size) + dataset_image_dimensions)
         if (64 and 64 != dataset_info.frame_size):
@@ -142,13 +140,13 @@ def preprocess_cameras(dataset_info, example, raw):
     raw_pose_params = example['cameras']
     raw_pose_params = tf.reshape(
         raw_pose_params,
-        [-1, dataset_info.sequence_size, 5])
+        [dataset_info.sequence_size, 5])
     if not raw:
-        pos = raw_pose_params[:, :, 0:3]
-        yaw = raw_pose_params[:, :, 3:4]
-        pitch = raw_pose_params[:, :, 4:5]
+        pos = raw_pose_params[:, 0:3]
+        yaw = raw_pose_params[:, 3:4]
+        pitch = raw_pose_params[:, 4:5]
         cameras = tf.concat(
-            [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=2)
+            [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=-1)
         return cameras.numpy()
     else:
         return raw_pose_params.numpy()
@@ -163,7 +161,7 @@ def _get_dataset_files(dataset_info, mode, root):
 
 
 def encapsulate(frames, cameras):
-    return Scene(cameras=cameras, frames=frames)
+    return dict(cameras=cameras, frames=frames)
 
 
 def convert_raw_to_numpy(dataset_info, raw_data, path, jpeg=False):
