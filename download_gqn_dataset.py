@@ -99,6 +99,7 @@ def download_dataset(name):
             def save_file(f):
                 # Read file and preprocess
                 engine = tf.data.TFRecordDataset(f) 
+                i = 0
                 for i, raw_data in enumerate(engine):
                     file_path = os.path.join(path, split, f'{tot[split]+i}.pt.gz')
                     # p = Process(target=convert_raw_to_numpy, args=(dataset_info, raw_data, file_path, True))
