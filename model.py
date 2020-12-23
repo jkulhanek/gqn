@@ -8,9 +8,13 @@ from torch.utils.data import random_split
 from torch.distributions import Normal
 from torch.distributions.kl import kl_divergence
 from torch.optim.lr_scheduler import _LRScheduler
+from typing import Literal
 
 from torchvision.datasets.mnist import MNIST
 from torchvision import transforms
+
+
+Representation = Literal['pool', 'tower', 'pyramid']
 
 
 class Conv2dLSTMCell(nn.Module):
@@ -177,7 +181,7 @@ class Pool(nn.Module):
 
 
 class GQN(nn.Module):
-    def __init__(self, representation="pool", L=12, shared_core=False):
+    def __init__(self, representation="pool", L=12, shared_core: bool = False):
         super(GQN, self).__init__()
 
         # Number of generative layers
@@ -411,7 +415,7 @@ class AnnealingStepLR(_LRScheduler):
 
 
 class GQNModel(pl.LightningModule):
-    def __init__(self, representation='pool', shared_core=False, layers=12):
+    def __init__(self, representation: Representation = 'pool', shared_core: bool = False, layers: int = 12):
         super().__init__()
         self.save_hyperparameters()
         self.gqn = GQN(representation=representation, shared_core=shared_core, L=layers)
@@ -430,6 +434,10 @@ class GQNModel(pl.LightningModule):
         elbo = self.gqn(x, v, v_q, x_q, sigma)
         return -elbo.mean()
 
+    def on_train_epoch_start(self):
+        self.train_dataloader.dataset.set_epoch(self.current_epoch)
+        self.val_dataloader.dataset.set_epoch(self.current_epoch)
+
     def validation_step(self, batch, batch_idx):
         x_test, v_test, x_q_test, v_q_test = batch['context_images'], batch['context_poses'], batch['query_image'], batch['query_pose']
         t = self.global_step
@@ -446,7 +454,7 @@ class GQNModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=5e-4, betas=(0.9, 0.999), eps=1e-8)
         scheduler = AnnealingStepLR(optimizer, mu_i=5e-4, mu_f=5e-5, n=1.6e6)
-        return optimizer, dict(scheduler=scheduler, interval='step')
+        return dict(optimizer=optimizer, lr_scheduler=scheduler, interval='step')
 
 
 def cli_main():

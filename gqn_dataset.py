@@ -1,15 +1,18 @@
 import bisect
-from typing import TypeVar, List
+from typing import TypeVar, List, Literal
 import collections
 import os
+import numpy as np
 import io
 import math
 from PIL import Image
 import torch
+import gzip
 from torchvision.transforms import ToTensor, Resize
 from torch.utils.data import Dataset
 import random
 import itertools
+import pytorch_lightning as pl
 
 
 DATASET_PATH = os.path.join(os.path.expanduser(os.environ.get('DATASETS_PATH', '~/datasets')), 'gqn')
@@ -62,7 +65,7 @@ class EnvironmentDataset(Dataset[T_co]):
 
     @property
     def num_environments(self):
-        return len(self.cummulative_sizes)
+        return len(self.cumulative_sizes)
 
     def __getitem__(self, idx):
         def map_index(idx):
@@ -79,13 +82,15 @@ class EnvironmentDataset(Dataset[T_co]):
         if isinstance(idx, (list, tuple)):
             indices = list(map(map_index, idx))
             sorted_indices = sorted(enumerate(indices), key=lambda x: x[1][0])
-            values = [None] * len(indices)
-            for group in itertools.groupby(sorted_indices, key=lambda x: x[1][0]):
+            images = [None] * len(indices)
+            cameras = [None] * len(indices)
+            for key, group in itertools.groupby(sorted_indices, key=lambda x: x[1][0]):
                 backward_indices, idxs = tuple(zip(*[(x[0], x[1][1]) for x in group]))
-                results = self.get_sample(group.key, idxs)
-                for i, r in zip(backward_indices, results):
-                    values[i] = r
-            return values
+                cimages, ccameras = self.get_sample(key, list(idxs))
+                for i, r, c in zip(backward_indices, cimages, ccameras):
+                    images[i] = r
+                    cameras[i] = c
+            return np.stack(images, 0), np.stack(cameras, 0)
         else:
             dataset_idx, sample_idx = map_index(idx)
             return self.get_sample(dataset_idx, sample_idx)
@@ -98,8 +103,8 @@ class EnvironmentDataset(Dataset[T_co]):
         return bisect.bisect_right(self.cumulative_sizes, idx)
 
     def environment_range(self, environment_idx):
-        start = self.cummulative_sizes[environment_idx - 1] if environment_idx != 0 else 0
-        end = self.cummulative_sizes[environment_idx]
+        start = self.cumulative_sizes[environment_idx - 1] if environment_idx != 0 else 0
+        end = self.cumulative_sizes[environment_idx]
         return (start, end)
 
     def get_sample(self, environment_id, sample_id):
@@ -126,10 +131,12 @@ def concatenate_shallow(xs):
 
 
 class QuerySingleTargetWrapper(Dataset):
-    def __init__(self, inner, max_num_views=5):
+    def __init__(self, inner, max_num_views=5, random_views=True):
         assert isinstance(inner, EnvironmentDataset)
         self.inner = inner
         self.epoch = 0
+        self.max_num_views = max_num_views
+        self.random_views = random_views
 
     def __len__(self):
         return len(self.inner)
@@ -152,12 +159,14 @@ class QuerySingleTargetWrapper(Dataset):
 
         gen = random.Random(self.pair_numbers(epoch, idx))
         num_views = gen.randint(1, self.max_num_views)
+        if not self.random_views:
+            num_views = self.max_num_views
         context_idx = gen.sample(range(env_start, env_end - 1), num_views)
 
         # Skip idx
         context_idx = [x + 1 if x >= idx else x for x in context_idx]
-        results = self.inner[context_idx + [idx]]
-        return concatenate_shallow(results[:-1]), results[-1]
+        image, pose = self.inner[context_idx + [idx]]
+        return (image[:-1], pose[:-1]), (image[-1], pose[-1])
 
 
 class SizeAdjustedDataset(Dataset):
@@ -261,20 +270,29 @@ def split_name(dataset_name: str):
 
 
 class GQNDataset(EnvironmentDataset):
-    def __init__(self, name, transform=None, target_transform=None):
+    def __init__(self, name, transform=None, target_transform=None, use_packed=True):
         name, split = split_name(name)
         self.root_dir = os.path.join(DATASET_PATH, f'{name}-th', split)
         self.transform = transform
         self.target_transform = target_transform
+        self.use_packed = use_packed
         info = _DATASETS[name]
-        super().__init__([info['sequence_size']] * len(os.listdir(self.root_dir)))
+        super().__init__([info.sequence_size] * len(os.listdir(self.root_dir)))
 
     def get_sample(self, environment_idx, idx):
-        scene_path = os.path.join(self.root_dir, "{}.pt".format(environment_idx))
-        data = torch.load(scene_path)
+        if self.use_packed:
+            scene_path = os.path.join(self.root_dir, "{}.pt.gz".format(environment_idx))
+            with gzip.open(scene_path, 'rb') as f:
+                data = torch.load(f)
+        else:
+            scene_path = os.path.join(self.root_dir, "{}.pt".format(environment_idx))
+            data = torch.load(scene_path)
+
         def byte_to_tensor(x): return ToTensor()(Resize(64)((Image.open(io.BytesIO(x)))))
         images = torch.stack([byte_to_tensor(frame) for frame in data.frames[idx]])
-        viewpoints = torch.from_numpy(data.cameras[idx])
+        viewpoints = torch.from_numpy(data.cameras[:, idx])
+        # images = torch.stack([byte_to_tensor(frame) for frame in data['frames'][idx]])
+        # viewpoints = torch.from_numpy(data['cameras'][idx])
         viewpoints = viewpoints.view(-1, 5)
         if self.transform:
             images = self.transform(images)
@@ -290,7 +308,7 @@ def load_gqn_dataset(name):
     elif "mazes" in dataset_name:
         max_num_views = 20
     elif "shepard" in dataset_name:
-        max_num_views = 15
+        max_num_views = 14
     elif 'rooms' in dataset_name:
         max_num_views = 5
     else:
@@ -303,6 +321,15 @@ def load_gqn_dataset(name):
         return dict(query_image=q_img, query_pose=q_pose, context_images=c_img, context_poses=c_pose)
 
     dataset = GQNDataset(name, target_transform=transform_viewpoint)
-    dataset = QuerySingleTargetWrapper(dataset, max_num_views=max_num_views)
+    dataset = QuerySingleTargetWrapper(dataset, max_num_views=max_num_views, random_views=False)
     dataset = MappedDataset(dataset, transform_batch)
     return dataset
+
+
+DatasetName = Literal[tuple(_DATASETS.keys())]
+
+
+if __name__ == '__main__':
+    d = load_gqn_dataset('shepard_metzler_7_parts-train')
+    d[0]
+    print({k: v.shape for k, v in d[0].items()})

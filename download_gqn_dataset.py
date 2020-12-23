@@ -139,13 +139,13 @@ def preprocess_cameras(dataset_info, example, raw):
     raw_pose_params = example['cameras']
     raw_pose_params = tf.reshape(
         raw_pose_params,
-        [-1, dataset_info.sequence_size, 5])
+        [dataset_info.sequence_size, 5])
     if not raw:
-        pos = raw_pose_params[:, :, 0:3]
-        yaw = raw_pose_params[:, :, 3:4]
-        pitch = raw_pose_params[:, :, 4:5]
+        pos = raw_pose_params[:, 0:3]
+        yaw = raw_pose_params[:, 3:4]
+        pitch = raw_pose_params[:, 4:5]
         cameras = tf.concat(
-            [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=2)
+            [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=-1)
         return cameras.numpy()
     else:
         return raw_pose_params.numpy()
@@ -160,7 +160,7 @@ def _get_dataset_files(dataset_info, mode, root):
 
 
 def encapsulate(frames, cameras):
-    return Scene(cameras=cameras, frames=frames)
+    return dict(cameras=cameras, frames=frames)
 
 
 def convert_raw_to_numpy(dataset_info, raw_data, path, jpeg=False):
