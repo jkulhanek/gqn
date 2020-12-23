@@ -52,18 +52,22 @@ def build_data(
 
 def build_trainer(
         total_steps: int = 2 * 10 ** 6,
+        num_gpus: int = 8,
         wandb: bool = True):
     if wandb:
         logger = pl.loggers.WandbLogger()
         logger = [logger, TensorBoardWandbLogger(logger)]
     else:
         logger = [pl.loggers.TensorBoardLogger('logs')]
+    kwargs = dict()
+    if num_gpus > 0:
+        kwargs.update(dict(gpus=num_gpus, num_nodes=num_gpus, accelerator='ddp'))
     trainer = pl.Trainer(
         max_steps=total_steps,
         val_check_interval=10000,
         limit_val_batches=100,
         logger=logger,
-        callbacks=[LogImageCallback(), pl.callbacks.LearningRateMonitor('step')])
+        callbacks=[LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)
     return trainer
 
 
