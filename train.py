@@ -86,7 +86,7 @@ def main():
     train_dataset = train_dataloader.dataset
     _old_on_train_epoch_start = trainer.on_train_epoch_start
 
-    def on_train_epoch_start(self, *args, **kwargs):
+    def on_train_epoch_start(*args, **kwargs):
         train_dataset.inner.set_epoch(trainer.current_epoch)
         _old_on_train_epoch_start(*args, **kwargs)
     trainer.on_train_epoch_start = on_train_epoch_start

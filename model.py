@@ -426,9 +426,8 @@ class GQNModel(pl.LightningModule):
         return self.gqn.generate(context_images, context_poses, poses)
 
     def training_step(self, batch, batch_idx):
-        query, target = batch
-        x_q, v_q = query
-        x, v = target
+        x_q, v_q = batch['query_image'], batch['query_pose']
+        x, v = batch['context_images'], batch['context_poses']
         t = self.global_step
         sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e5)), self.sigma_f)
         elbo = self.gqn(x, v, v_q, x_q, sigma)
