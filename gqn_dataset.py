@@ -290,7 +290,7 @@ class GQNDataset(EnvironmentDataset):
         self.target_transform = target_transform
         self.use_packed = use_packed
         info = _DATASETS[name]
-        super().__init__([info.sequence_size] * find_dataset_size(self.root_dir)
+        super().__init__([info.sequence_size] * find_dataset_size(self.root_dir))
 
     def get_sample(self, environment_idx, idx):
         if self.use_packed:
@@ -302,10 +302,10 @@ class GQNDataset(EnvironmentDataset):
             data = torch.load(scene_path)
 
         def byte_to_tensor(x): return ToTensor()(Resize(64)((Image.open(io.BytesIO(x)))))
-        images = torch.stack([byte_to_tensor(frame) for frame in data.frames[idx]])
-        viewpoints = torch.from_numpy(data.cameras[:, idx])
-        # images = torch.stack([byte_to_tensor(frame) for frame in data['frames'][idx]])
-        # viewpoints = torch.from_numpy(data['cameras'][idx])
+        # images = torch.stack([byte_to_tensor(frame) for frame in data.frames[idx]])
+        # viewpoints = torch.from_numpy(data.cameras[:, idx])
+        images = torch.stack([byte_to_tensor(frame) for frame in data['frames'][idx]])
+        viewpoints = torch.from_numpy(data['cameras'][idx])
         viewpoints = viewpoints.view(-1, 5)
         if self.transform:
             images = self.transform(images)
@@ -343,6 +343,6 @@ DatasetName = Literal[tuple(_DATASETS.keys())]
 
 
 if __name__ == '__main__':
-    d = load_gqn_dataset('shepard_metzler_7_parts-train')
+    d = load_gqn_dataset('rooms_ring_camera-train')
     d[0]
     print({k: v.shape for k, v in d[0].items()})
