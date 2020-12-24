@@ -432,7 +432,7 @@ class GQNModel(pl.LightningModule):
         sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e5)), self.sigma_f)
         elbo = self.gqn(x, v, v_q, x_q, sigma)
         loss = -elbo.mean()
-        # self.log('loss', loss, prog_bar=True)
+        self.log('loss', loss)
         return loss
 
     def validation_step(self, batch, batch_idx):
@@ -451,7 +451,7 @@ class GQNModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=5e-4, betas=(0.9, 0.999), eps=1e-8)
         scheduler = AnnealingStepLR(optimizer, mu_i=5e-4, mu_f=5e-5, n=1.6e6)
-        return dict(optimizer=optimizer, lr_scheduler=scheduler, interval='step')
+        return dict(optimizer=optimizer, lr_scheduler=scheduler, interval='step', name='gqn')
 
 
 def cli_main():
