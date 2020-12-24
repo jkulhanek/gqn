@@ -269,6 +269,19 @@ def split_name(dataset_name: str):
     return dataset_name[:split], dataset_name[split + 1:]
 
 
+def find_dataset_size(path):
+    usize = 1
+    while os.path.exists(os.path.join(path, f'{usize}.pt.gz')):
+        usize *= 2
+    lsize = usize // 2
+    while usize - lsize > 1:
+        if os.path.exists(os.path.join(path, f'{(usize + lsize) // 2}.pt.gz')):
+            lsize = (usize + lsize) // 2
+        else:
+            usize = (usize + lsize) // 2
+    return usize
+
+
 class GQNDataset(EnvironmentDataset):
     def __init__(self, name, transform=None, target_transform=None, use_packed=True):
         name, split = split_name(name)
@@ -277,7 +290,7 @@ class GQNDataset(EnvironmentDataset):
         self.target_transform = target_transform
         self.use_packed = use_packed
         info = _DATASETS[name]
-        super().__init__([info.sequence_size] * len(os.listdir(self.root_dir)))
+        super().__init__([info.sequence_size] * find_dataset_size(self.root_dir)
 
     def get_sample(self, environment_idx, idx):
         if self.use_packed:
