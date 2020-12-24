@@ -52,6 +52,7 @@ def build_data(
 
 def build_trainer(
         total_steps: int = 2 * 10 ** 6,
+        epochs: int = 50,
         num_gpus: int = 8,
         num_nodes: int = 1,
         wandb: bool = True):
@@ -63,10 +64,14 @@ def build_trainer(
     kwargs = dict(num_nodes=num_nodes)
     if num_gpus > 0:
         kwargs.update(dict(gpus=num_gpus, accelerator='ddp'))
+
+    # Split training to #epochs epochs
+    limit_train_batches = 1 + total_steps // epochs
     trainer = pl.Trainer(
         max_steps=total_steps,
         val_check_interval=10000,
         limit_val_batches=100,
+        limit_train_batches=limit_train_batches,
         logger=logger,
         callbacks=[LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)
     return trainer
