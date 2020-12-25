@@ -74,7 +74,6 @@ def build_trainer(
     # Split training to #epochs epochs
     limit_train_batches = 1 + total_steps // epochs
     if profile:
-        print(output_dir)
         profiler = pl.profiler.AdvancedProfiler(os.path.join(output_dir, 'profile.txt'))
     else:
         profiler = pl.profiler.PassThroughProfiler()
