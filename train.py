@@ -7,7 +7,8 @@ from utils import TensorBoardWandbLogger, LogImageCallback
 import pytorch_lightning as pl
 from model import GQNModel
 from utils import add_arguments, bind_arguments
-from gqn_dataset import DatasetName, load_gqn_dataset, Scene
+import os
+from gqn_dataset import DatasetName, load_gqn_dataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 import torch
@@ -55,24 +56,33 @@ def build_trainer(
         epochs: int = 50,
         num_gpus: int = 8,
         num_nodes: int = 1,
+        profile: bool = False,
         wandb: bool = True):
+    output_dir = None
     if wandb:
-        logger = pl.loggers.WandbLogger()
-        logger = [logger, TensorBoardWandbLogger(logger)]
+        wandb_logger = pl.loggers.WandbLogger()
+        logger = [wandb_logger, TensorBoardWandbLogger(wandb_logger)]
+        output_dir = wandb_logger.experiment.dir
     else:
         logger = [pl.loggers.TensorBoardLogger('logs')]
+        output_dir = ''
     kwargs = dict(num_nodes=num_nodes)
     if num_gpus > 0:
         kwargs.update(dict(gpus=num_gpus, accelerator='ddp'))
 
     # Split training to #epochs epochs
     limit_train_batches = 1 + total_steps // epochs
+    if profile:
+        profiler = pl.profiler.AdvancedProfiler(os.path.join(output_dir, 'profile.txt'))
+    else:
+        profiler = pl.profiler.PassThroughProfiler()
     trainer = pl.Trainer(
         max_steps=total_steps,
         val_check_interval=10000,
         limit_val_batches=100,
         limit_train_batches=limit_train_batches,
         logger=logger,
+        profiler=profiler,
         callbacks=[LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)
     return trainer
 

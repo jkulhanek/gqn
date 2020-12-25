@@ -94,7 +94,7 @@ class LogImageCallback(pl.Callback):
         super().__init__()
 
     def on_validation_batch_end(self, trainer, model, model_output, batch, batch_idx, *args, **kwargs):
-        if 'image' not in model_output:
+        if 'generated_image' not in model_output:
             return
 
         if trainer.global_rank != 0:
