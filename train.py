@@ -59,14 +59,14 @@ def build_trainer(
         profile: bool = False,
         fp16: bool = False,
         wandb: bool = True):
-    output_dir = None
+    output_dir = ''
     if wandb:
         wandb_logger = pl.loggers.WandbLogger()
         logger = [wandb_logger, TensorBoardWandbLogger(wandb_logger)]
-        output_dir = wandb_logger.experiment.dir
+        if isinstance(wandb_logger.experiment.dir, str):
+            output_dir = wandb_logger.experiment.dir
     else:
         logger = [pl.loggers.TensorBoardLogger('logs')]
-        output_dir = ''
     kwargs = dict(num_nodes=num_nodes)
     if num_gpus > 0:
         kwargs.update(dict(gpus=num_gpus, accelerator='ddp'))
