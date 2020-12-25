@@ -57,6 +57,7 @@ def build_trainer(
         num_gpus: int = 8,
         num_nodes: int = 1,
         profile: bool = False,
+        fp16: bool = False,
         wandb: bool = True):
     output_dir = None
     if wandb:
@@ -73,9 +74,12 @@ def build_trainer(
     # Split training to #epochs epochs
     limit_train_batches = 1 + total_steps // epochs
     if profile:
+        print(output_dir)
         profiler = pl.profiler.AdvancedProfiler(os.path.join(output_dir, 'profile.txt'))
     else:
         profiler = pl.profiler.PassThroughProfiler()
+    if fp16:
+        kwargs['precision'] = 16
     trainer = pl.Trainer(
         max_steps=total_steps,
         val_check_interval=10000,
