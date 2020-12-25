@@ -451,7 +451,7 @@ class GQNModel(pl.LightningModule):
     def configure_optimizers(self):
         optimizer = torch.optim.Adam(self.parameters(), lr=5e-4, betas=(0.9, 0.999), eps=1e-8)
         scheduler = AnnealingStepLR(optimizer, mu_i=5e-4, mu_f=5e-5, n=1.6e6)
-        return [optimizer], [dict(lr_scheduler=scheduler, interval='step', name='gqn')]
+        return [optimizer], [dict(scheduler=scheduler, interval='step', name='gqn')]
 
 
 def cli_main():
