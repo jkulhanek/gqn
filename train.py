@@ -105,7 +105,7 @@ def main():
     trainer = build_trainer(**bind_arguments(args, build_trainer))
     for logger in trainer.logger:
         if isinstance(logger, pl.loggers.WandbLogger):
-            logger.experiment.config.update(args, allows_val_change=True)
+            logger.experiment.config.update(args, allow_val_change=True)
     (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
     # Set update epoch hook for datasets
