@@ -83,7 +83,8 @@ def build_trainer(
         kwargs['default_save_path'] = os.path.join(output_dir, 'checkpoint')
         os.makedirs(kwargs['default_save_path'], exist_ok=True)
     trainer = pl.Trainer(
-        max_steps=total_steps,
+        # max_steps=total_steps,
+        max_epochs=epochs,
         val_check_interval=10000,
         limit_val_batches=100,
         limit_train_batches=limit_train_batches,
