@@ -79,6 +79,9 @@ def build_trainer(
         profiler = pl.profiler.PassThroughProfiler()
     if fp16:
         kwargs['precision'] = 16
+    if wandb:
+        kwargs['default_save_path'] = os.path.join(output_dir, 'checkpoint')
+        os.makedirs(kwargs['default_save_path'], exist_ok=True)
     trainer = pl.Trainer(
         max_steps=total_steps,
         val_check_interval=10000,
