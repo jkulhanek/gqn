@@ -80,8 +80,8 @@ def build_trainer(
     if fp16:
         kwargs['precision'] = 16
     if wandb:
-        kwargs['default_save_path'] = os.path.join(output_dir, 'checkpoint')
-        os.makedirs(kwargs['default_save_path'], exist_ok=True)
+        kwargs['default_root_dir'] = os.path.join(output_dir, 'checkpoint')
+        os.makedirs(kwargs['default_root_dir'], exist_ok=True)
     trainer = pl.Trainer(
         # max_steps=total_steps,
         max_epochs=epochs,
@@ -103,6 +103,9 @@ def main():
     args = parser.parse_args()
     model = GQNModel(**bind_arguments(args, GQNModel))
     trainer = build_trainer(**bind_arguments(args, build_trainer))
+    for logger in trainer.logger:
+        if isinstance(logger, pl.WandbLogger):
+            logger.experiment.config.update(args, allows_val_change=True)
     (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
     # Set update epoch hook for datasets
