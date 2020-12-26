@@ -104,7 +104,7 @@ def main():
     model = GQNModel(**bind_arguments(args, GQNModel))
     trainer = build_trainer(**bind_arguments(args, build_trainer))
     for logger in trainer.logger:
-        if isinstance(logger, pl.loggers.WandbLogger):
+        if isinstance(logger, pl.loggers.WandbLogger) and hasattr(logger.experiment.config, 'update'):
             logger.experiment.config.update(args, allow_val_change=True)
     (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
