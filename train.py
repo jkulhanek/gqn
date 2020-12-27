@@ -14,7 +14,7 @@ import logging_utils
 
 
 def build_data(
-        batch_size: int = 5,
+        batch_size: int = 48,
         dataset: DatasetName = 'shepard_metzler_7_parts',
         num_workers: int = 8,
         seed=42):
@@ -50,8 +50,9 @@ def build_data(
     return (train_dataloader, test_dataloader)
 
 
+# NOTE: we use different number of total steps, because we run the model on 8GPUs with 10 times the batch size
 def build_trainer(
-        total_steps: int = 2 * 10 ** 6,
+        total_steps: int = 2 * 10 ** 5,
         epochs: int = 50,
         num_gpus: int = 8,
         num_nodes: int = 1,

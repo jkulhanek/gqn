@@ -62,7 +62,7 @@ def setup_logging(level=logging.INFO):
         logging._releaseLock()
 
 
-def get_parameters(function_or_cls):
+def get_parameters(function_or_cls, output_all=False):
     if inspect.isclass(function_or_cls):
         def collect_parameters(cls):
             output = []
@@ -84,10 +84,6 @@ def get_parameters(function_or_cls):
                 params.append(p)
     output_parameters = []
     for p in params:
-        if p.default is None:
-            continue
-        if p.annotation is None:
-            continue
         output_parameters.append(p)
     return output_parameters
 
