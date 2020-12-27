@@ -72,7 +72,23 @@ _DATASETS = dict(
 )
 
 
-def download_dataset(name):
+def find_dataset_size(path):
+    usize = 1
+    while os.path.exists(os.path.join(path, f'{usize}.pt.gz')):
+        usize *= 2
+    lsize = usize // 2
+    while usize - lsize > 1:
+        if os.path.exists(os.path.join(path, f'{(usize + lsize) // 2}.pt.gz')):
+            lsize = (usize + lsize) // 2
+        else:
+            usize = (usize + lsize) // 2
+    return usize
+
+
+def download_dataset(name, compress, image_size):
+    ext = '.pt'
+    if compress:
+        ext = '.pt.gz'
     path = os.path.join(DATASET_PATH, f'{name}-th')
     os.makedirs(os.path.join(path, 'train'), exist_ok=True)
     os.makedirs(os.path.join(path, 'test'), exist_ok=True)
@@ -85,7 +101,7 @@ def download_dataset(name):
     tot = collections.defaultdict(lambda: 0)
     if os.path.exists(os.path.join(path, 'downloaded.txt')):
         existing_data = [x[:-1].split(' ') for x in open(os.path.join(path, 'downloaded.txt'), 'r')]
-    if existing_data:    
+    if existing_data:
         tot_train, tot_test, existing_data = tuple(zip(*existing_data))
         tot['train'] = max(map(int, tot_train))
         tot['test'] = max(map(int, tot_test))
@@ -98,14 +114,14 @@ def download_dataset(name):
 
             def save_file(f):
                 # Read file and preprocess
-                engine = tf.data.TFRecordDataset(f) 
+                engine = tf.data.TFRecordDataset(f)
                 i = 0
                 for i, raw_data in enumerate(engine):
-                    file_path = os.path.join(path, split, f'{tot[split]+i}.pt.gz')
+                    file_path = os.path.join(path, split, f'{tot[split]+i}{ext}')
                     # p = Process(target=convert_raw_to_numpy, args=(dataset_info, raw_data, file_path, True))
                     # p.start()
                     # p.join()
-                    convert_raw_to_numpy(dataset_info, raw_data, file_path, True)
+                    convert_raw_to_numpy(dataset_info, raw_data, file_path, image_size)
                 tot[split] += i
                 print(f'{tot["train"]} {tot["test"]} {blob.name}', file=downloaded_f)
                 downloaded_f.flush()
@@ -118,25 +134,22 @@ def download_dataset(name):
                     f.flush()
                     f.seek(0)
                     save_file(f.name)
+    print(f'Dataset {name} downloaded')
 
 
-def preprocess_frames(dataset_info, example, jpeg='False'):
+def preprocess_frames(dataset_info, example, image_size=64):
     """Instantiates the ops used to preprocess the frames data."""
     frames = tf.concat(example['frames'], axis=0)
-    if not jpeg:
-        frames = tf.image.decode_jpeg(tf.reshape(frames, [-1]))
+    if image_size != dataset_info.frame_size:
+        frames = tf.stack([tf.image.decode_jpeg(x) for x in frames], 0)
         frames = tf.image.convert_image_dtype(frames, dtype=tf.float32)
-        dataset_image_dimensions = tuple([dataset_info.frame_size] * 2 + [3])
-        frames = tf.reshape(frames, (-1, dataset_info.sequence_size) + dataset_image_dimensions)
-        if (64 and 64 != dataset_info.frame_size):
-            frames = tf.reshape(frames, (-1,) + dataset_image_dimensions)
-            new_frame_dimensions = (64,) * 2 + (3,)
-            frames = tf.image.resize_bilinear(frames, new_frame_dimensions[:2], align_corners=True)
-            frames = tf.reshape(frames, (-1, dataset_info.sequence_size) + new_frame_dimensions)
+        frames = tf.image.resize(frames, [image_size, image_size])
+        frames = tf.image.convert_image_dtype(frames, dtype=tf.uint8)
+        frames = tf.stack([tf.image.encode_jpeg(x) for x in frames], 0)
     return frames.numpy()
 
 
-def preprocess_cameras(dataset_info, example, raw):
+def preprocess_cameras(dataset_info, example, raw=True):
     """Instantiates the ops used to preprocess the cameras data."""
     raw_pose_params = example['cameras']
     raw_pose_params = tf.reshape(
@@ -165,7 +178,7 @@ def encapsulate(frames, cameras):
     return dict(cameras=cameras, frames=frames)
 
 
-def convert_raw_to_numpy(dataset_info, raw_data, path, jpeg=False):
+def convert_raw_to_numpy(dataset_info, raw_data, path, image_size=None):
     feature_map = {
         'frames': tf.io.FixedLenFeature(
             shape=dataset_info.sequence_size, dtype=tf.string),
@@ -174,11 +187,14 @@ def convert_raw_to_numpy(dataset_info, raw_data, path, jpeg=False):
             dtype=tf.float32)
     }
     example = tf.io.parse_single_example(raw_data, feature_map)
-    frames = preprocess_frames(dataset_info, example, jpeg)
-    cameras = preprocess_cameras(dataset_info, example, jpeg)
+    frames = preprocess_frames(dataset_info, example, image_size=image_size)
+    cameras = preprocess_cameras(dataset_info, example)
     scene = encapsulate(frames, cameras)
-    with gzip.open(path, 'wb') as f:
-        torch.save(scene, f)
+    if path.endswith('.gz'):
+        with gzip.open(path, 'wb') as f:
+            torch.save(scene, f)
+    else:
+        torch.save(scene, path)
 
 
 def show_frame(frames, scene, views):
@@ -192,10 +208,12 @@ def show_frame(frames, scene, views):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', choices=list(_DATASETS.keys()) + ['all'])
+    parser.add_argument('--decompress', action='store_true', help='Decompress for faster training')
+    parser.add_argument('--image-size', default=64, type=float)
     args = parser.parse_args()
     dataset = args.dataset
     if dataset == 'all':
         for k in _DATASETS.keys():
-            download_dataset(k)
+            download_dataset(k, not args.decompress, args.image_size)
     else:
-        download_dataset(dataset)
+        download_dataset(dataset, not args.decompress, args.image_size)
