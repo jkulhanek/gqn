@@ -3,19 +3,18 @@ import logging
 import argparse
 import multiprocessing
 from utils import setup_logging
-from utils import TensorBoardWandbLogger, LogImageCallback
 import pytorch_lightning as pl
 from model import GQNModel
 from utils import add_arguments, bind_arguments
-import os
 from gqn_dataset import DatasetName, load_gqn_dataset
 from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 import torch
+import logging_utils
 
 
 def build_data(
-        batch_size: int = 36,
+        batch_size: int = 6,
         dataset: DatasetName = 'shepard_metzler_7_parts',
         num_workers: int = 8,
         seed=42):
@@ -57,16 +56,13 @@ def build_trainer(
         num_gpus: int = 8,
         num_nodes: int = 1,
         profile: bool = False,
+        log_graph: bool = False,
         fp16: bool = False,
         wandb: bool = True):
-    output_dir = ''
     if wandb:
-        wandb_logger = pl.loggers.WandbLogger()
-        logger = [wandb_logger, TensorBoardWandbLogger(wandb_logger)]
-        if isinstance(wandb_logger.experiment.dir, str):
-            output_dir = wandb_logger.experiment.dir
+        logger = logging_utils.WandbLogger(log_model=True, log_graph=log_graph)
     else:
-        logger = [pl.loggers.TensorBoardLogger('logs')]
+        logger = pl.loggers.TensorBoardLogger(log_graph=log_graph)
     kwargs = dict(num_nodes=num_nodes)
     if num_gpus > 0:
         kwargs.update(dict(gpus=num_gpus, accelerator='ddp'))
@@ -74,14 +70,11 @@ def build_trainer(
     # Split training to #epochs epochs
     limit_train_batches = 1 + total_steps // epochs
     if profile:
-        profiler = pl.profiler.AdvancedProfiler(os.path.join(output_dir, 'profile.txt'))
+        profiler = pl.profiler.AdvancedProfiler()
     else:
         profiler = pl.profiler.PassThroughProfiler()
     if fp16:
         kwargs['precision'] = 16
-    if wandb:
-        kwargs['default_root_dir'] = os.path.join(output_dir, 'checkpoint')
-        os.makedirs(kwargs['default_root_dir'], exist_ok=True)
     trainer = pl.Trainer(
         # max_steps=total_steps,
         max_epochs=epochs,
@@ -90,7 +83,7 @@ def build_trainer(
         limit_train_batches=limit_train_batches,
         logger=logger,
         profiler=profiler,
-        callbacks=[LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)
+        callbacks=[logging_utils.LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)
     return trainer
 
 
@@ -103,9 +96,8 @@ def main():
     args = parser.parse_args()
     model = GQNModel(**bind_arguments(args, GQNModel))
     trainer = build_trainer(**bind_arguments(args, build_trainer))
-    for logger in trainer.logger:
-        if isinstance(logger, pl.loggers.WandbLogger) and hasattr(logger.experiment.config, 'update'):
-            logger.experiment.config.update(args, allow_val_change=True)
+    if hasattr(trainer.logger.experiment.wandb_experiment, 'config'):
+        trainer.logger.experiment.wandb_experiment.config.update(args, allow_val_change=True)
     (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
     # Set update epoch hook for datasets
