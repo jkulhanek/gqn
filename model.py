@@ -415,7 +415,7 @@ class AnnealingStepLR(_LRScheduler):
 
 
 class GQNModel(pl.LightningModule):
-    def __init__(self, representation: Representation = 'pool', shared_core: bool = False, layers: int = 12, learning_rate: float = 5e-3):
+    def __init__(self, representation: Representation = 'pool', shared_core: bool = False, layers: int = 12, learning_rate: float = 5e-4):
         super().__init__()
         self.save_hyperparameters()
         self.gqn = GQN(representation=representation, shared_core=shared_core, L=layers)
@@ -430,7 +430,7 @@ class GQNModel(pl.LightningModule):
         x_q, v_q = batch['query_image'], batch['query_pose']
         x, v = batch['context_images'], batch['context_poses']
         t = self.global_step
-        sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e5)), self.sigma_f)
+        sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e4)), self.sigma_f)
         elbo = self.gqn(x, v, v_q, x_q, sigma)
         loss = -elbo.mean()
         self.log('loss', loss)
@@ -439,7 +439,7 @@ class GQNModel(pl.LightningModule):
     def validation_step(self, batch, batch_idx):
         x_test, v_test, x_q_test, v_q_test = batch['context_images'], batch['context_poses'], batch['query_image'], batch['query_pose']
         t = self.global_step
-        sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e5)), self.sigma_f)
+        sigma = max(self.sigma_f + (self.sigma_i - self.sigma_f)*(1 - t/(2e4)), self.sigma_f)
         elbo_test = self.gqn(x_test, v_test, v_q_test, x_q_test, sigma)
         kl_test = self.gqn.kl_divergence(x_test, v_test, v_q_test, x_q_test)
         x_q_rec_test = self.gqn.reconstruct(x_test, v_test, v_q_test, x_q_test)

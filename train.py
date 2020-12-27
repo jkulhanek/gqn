@@ -58,7 +58,7 @@ def build_trainer(
         num_nodes: int = 1,
         profile: bool = False,
         log_graph: bool = False,
-        gradient_clip_val: float = 10.0,
+        gradient_clip_val: float = 0.0,
         fp16: bool = False,
         wandb: bool = True):
     if wandb:
