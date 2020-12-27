@@ -44,11 +44,11 @@ class ExperimentTuple:
 
     def add_image(self, tag, img_tensor, global_step=None, *, label=None, **kwargs):
         self.tensorboard_experiment.add_image(tag, img_tensor, global_step=global_step, **kwargs)
-        self.wandb_experiment.log({tag: [wandb.Image(img_tensor.cpu().numpy(), caption=label or tag)]}, step=global_step + self._wandb_offset if global_step is not None else global_step)
+        self.wandb_experiment.log({tag: [wandb.Image(img_tensor, caption=label or tag)]}, step=global_step + self._wandb_offset if global_step is not None else global_step)
 
     def add_images(self, tag, img_tensor, global_step=None, *, label=None, **kwargs):
         self.tensorboard_experiment.add_images(tag, img_tensor, global_step=global_step, **kwargs)
-        self.wandb_experiment.log({tag: [wandb.Image(x, caption=f'{label or tag} {i}') for i, x in enumerate(img_tensor.cpu().numpy())]},
+        self.wandb_experiment.log({tag: [wandb.Image(x, caption=f'{label or tag} {i}') for i, x in torch.unbind(img_tensor)]},
                                   step=global_step + self._wandb_offset if global_step is not None else global_step)
 
 
@@ -255,7 +255,7 @@ class WandbLogger(LightningLoggerBase):
 
 
 class LogImageCallback(Callback):
-    def __init__(self, num_validation_images=32, grid_size=6):
+    def __init__(self, num_validation_images=32, grid_size=8):
         self.num_validation_images = num_validation_images
         self.grid_size = grid_size
         super().__init__()
