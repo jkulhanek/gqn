@@ -14,7 +14,7 @@ import logging_utils
 
 
 def build_data(
-        batch_size: int = 6,
+        batch_size: int = 5,
         dataset: DatasetName = 'shepard_metzler_7_parts',
         num_workers: int = 8,
         seed=42):
