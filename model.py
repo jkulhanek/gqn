@@ -421,6 +421,7 @@ class GQNModel(pl.LightningModule):
         self.gqn = GQN(representation=representation, shared_core=shared_core, L=layers)
         self.sigma_i, self.sigma_f = 2.0, 0.7
         self.sigma = self.sigma_i
+        self.learning_rate = learning_rate
 
     def forward(self, context_images, context_poses, poses):
         return self.gqn.generate(context_images, context_poses, poses)
