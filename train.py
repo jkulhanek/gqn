@@ -82,6 +82,7 @@ def build_trainer(
         val_check_interval=1000,
         limit_val_batches=10,
         limit_train_batches=limit_train_batches,
+        track_grad_norm=2,
         logger=logger,
         profiler=profiler,
         callbacks=[logging_utils.LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)

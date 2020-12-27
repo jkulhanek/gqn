@@ -451,9 +451,9 @@ class GQNModel(pl.LightningModule):
     def configure_optimizers(self):
         # NOTE: We will use 10 times more computational power
         # lr has to be updated accordingly
-        effective_batch_scale = 10
-        optimizer = torch.optim.Adam(self.parameters(), lr=effective_batch_scale * 5e-4, betas=(0.9, 0.999), eps=1e-8)
-        scheduler = AnnealingStepLR(optimizer, mu_i=effective_batch_scale * 5e-4, mu_f=effective_batch_scale * 5e-5, n=1.6e6 // effective_batch_scale)
+        # Original lr was 5e-4 -> 5e-5 (1.6e6 steps)
+        optimizer = torch.optim.Adam(self.parameters(), lr=15e-4, betas=(0.9, 0.999), eps=1e-8)
+        scheduler = AnnealingStepLR(optimizer, mu_i=15e-4, mu_f=15e-5, n=1.6e5)
         return [optimizer], [dict(scheduler=scheduler, interval='step', name='lr')]
 
 
