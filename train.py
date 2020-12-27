@@ -58,6 +58,7 @@ def build_trainer(
         num_nodes: int = 1,
         profile: bool = False,
         log_graph: bool = False,
+        gradient_clip_val: float = 10.0,
         fp16: bool = False,
         wandb: bool = True):
     if wandb:
@@ -80,9 +81,10 @@ def build_trainer(
         # max_steps=total_steps,
         max_epochs=epochs,
         val_check_interval=1000,
+        gradient_clip_val=gradient_clip_val,
         limit_val_batches=10,
         limit_train_batches=limit_train_batches,
-        track_grad_norm=2,
+        # track_grad_norm=2,
         logger=logger,
         profiler=profiler,
         callbacks=[logging_utils.LogImageCallback(), pl.callbacks.LearningRateMonitor('step')], **kwargs)

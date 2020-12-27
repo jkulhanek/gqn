@@ -415,7 +415,7 @@ class AnnealingStepLR(_LRScheduler):
 
 
 class GQNModel(pl.LightningModule):
-    def __init__(self, representation: Representation = 'pool', shared_core: bool = False, layers: int = 12):
+    def __init__(self, representation: Representation = 'pool', shared_core: bool = False, layers: int = 12, learning_rate: float = 5e-3):
         super().__init__()
         self.save_hyperparameters()
         self.gqn = GQN(representation=representation, shared_core=shared_core, L=layers)
@@ -452,8 +452,8 @@ class GQNModel(pl.LightningModule):
         # NOTE: We will use 10 times more computational power
         # lr has to be updated accordingly
         # Original lr was 5e-4 -> 5e-5 (1.6e6 steps)
-        optimizer = torch.optim.Adam(self.parameters(), lr=15e-4, betas=(0.9, 0.999), eps=1e-8)
-        scheduler = AnnealingStepLR(optimizer, mu_i=15e-4, mu_f=15e-5, n=1.6e5)
+        optimizer = torch.optim.Adam(self.parameters(), lr=self.learning_rate, betas=(0.9, 0.999), eps=1e-8)
+        scheduler = AnnealingStepLR(optimizer, mu_i=self.learning_rate, mu_f=self.learning_rate / 10, n=1.6e5)
         return [optimizer], [dict(scheduler=scheduler, interval='step', name='lr')]
 
 
