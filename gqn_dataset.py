@@ -271,11 +271,11 @@ def split_name(dataset_name: str):
 
 def find_dataset_size(path):
     usize = 1
-    while os.path.exists(os.path.join(path, f'{usize}.pt.gz')):
+    while os.path.exists(os.path.join(path, f'{usize}.pt.gz')) or os.path.exists(os.path.join(path, f'{usize}.pt')):
         usize *= 2
     lsize = usize // 2
     while usize - lsize > 1:
-        if os.path.exists(os.path.join(path, f'{(usize + lsize) // 2}.pt.gz')):
+        if os.path.exists(os.path.join(path, f'{(usize + lsize) // 2}.pt.gz')) or os.path.exists(os.path.join(path, f'{(usize + lsize) // 2}.pt')):
             lsize = (usize + lsize) // 2
         else:
             usize = (usize + lsize) // 2
@@ -283,23 +283,22 @@ def find_dataset_size(path):
 
 
 class GQNDataset(EnvironmentDataset):
-    def __init__(self, name, transform=None, target_transform=None, use_packed=True):
+    def __init__(self, name, transform=None, target_transform=None):
         name, split = split_name(name)
         self.root_dir = os.path.join(DATASET_PATH, f'{name}-th', split)
         self.transform = transform
         self.target_transform = target_transform
-        self.use_packed = use_packed
         info = _DATASETS[name]
         super().__init__([info.sequence_size] * find_dataset_size(self.root_dir))
 
     def get_sample(self, environment_idx, idx):
-        if self.use_packed:
+        if os.path.exists(os.path.join(self.root_dir, f'{environment_idx}.pt')):
+            scene_path = os.path.join(self.root_dir, f"{environment_idx}.pt")
+            data = torch.load(scene_path)
+        else:
             scene_path = os.path.join(self.root_dir, "{}.pt.gz".format(environment_idx))
             with gzip.open(scene_path, 'rb') as f:
                 data = torch.load(f)
-        else:
-            scene_path = os.path.join(self.root_dir, "{}.pt".format(environment_idx))
-            data = torch.load(scene_path)
 
         def byte_to_tensor(x): return ToTensor()(Resize(64)((Image.open(io.BytesIO(x)))))
         # images = torch.stack([byte_to_tensor(frame) for frame in data.frames[idx]])
