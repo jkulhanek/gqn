@@ -426,7 +426,6 @@ class GQNModel(pl.LightningModule):
         return self.gqn.generate(context_images, context_poses, poses)
 
     def training_step(self, batch, batch_idx):
-        print({k: v.shape for k, v in batch.items()})
         x_q, v_q = batch['query_image'], batch['query_pose']
         x, v = batch['context_images'], batch['context_poses']
         t = self.global_step
