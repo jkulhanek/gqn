@@ -79,8 +79,8 @@ def build_trainer(
     trainer = pl.Trainer(
         # max_steps=total_steps,
         max_epochs=epochs,
-        val_check_interval=10000,
-        limit_val_batches=100,
+        val_check_interval=1000,
+        limit_val_batches=10,
         limit_train_batches=limit_train_batches,
         logger=logger,
         profiler=profiler,
