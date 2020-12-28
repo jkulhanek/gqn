@@ -94,7 +94,7 @@ def download_dataset(name, compress, image_size):
     storage_client = storage.Client.create_anonymous_client()
     bucket = storage_client.bucket('gqn-dataset')
     dataset_info = _DATASETS[name]
-    with open(os.path.join(path, name, 'info.json'), 'w+') as f:
+    with open(os.path.join(path, 'info.json'), 'w+') as f:
         json.dump(_DATASET_INFO[name], f)
     existing_data = []
     tot = collections.defaultdict(lambda: 0)
