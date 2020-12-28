@@ -11,31 +11,34 @@ DATASET_PATH = os.path.join(os.path.expanduser(os.environ.get('DATASETS_PATH', '
 
 
 def sample_environment(data, sample_size, environment_size, rng=random, shuffle=False, max_samples_per_env=-1):
-    if shuffle:
-        data = wds.filters.shuffle(bufsize=environment_size, initial=environment_size, rng=rng)(data)
+    current_env = None
+    env = []
 
     def get_env_id(sample):
         return sample['__key__'].split('-')[0]
-    current_env = None
-    env = []
-    samples_per_env = 0
-    for sample in data:
-        env_id = get_env_id(sample)
-        if current_env is None or env_id != current_env:
-            env = [sample]
-            current_env = env_id
-            samples_per_env = 0
-        else:
-            env.append(sample)
-        if len(env) >= sample_size:
-            samples_per_env += 1
-            if max_samples_per_env < 1 or samples_per_env <= max_samples_per_env:
-                yield {k: [x[k] for x in env] for k in env[0].keys()}
-            env = []
-    if len(env) >= sample_size:
-        samples_per_env += 1
-        if max_samples_per_env < 1 or samples_per_env <= max_samples_per_env:
-            yield {k: [x[k] for x in env] for k in env[0].keys()}
+
+    def yield_env(env):
+        curr_sample_size = (len(env) // sample_size) * sample_size
+        if max_samples_per_env > 0:
+            curr_sample_size = min(curr_sample_size, max_samples_per_env * sample_size)
+        if curr_sample_size > 0:
+            sample = rng.sample(env, curr_sample_size)
+            sample = rng.shuffle(sample)
+            for i in range(len(env) // sample_size):
+                batch = sample[i * sample_size: (i + 1) * sample_size]
+                yield {k: [x[k] for x in batch] for k in batch.keys()}
+    while True:
+        for sample in data:
+            env_id = get_env_id(sample)
+            if current_env is not None and env_id != current_env:
+                current_env = env_id
+                for x in yield_env(env):
+                    yield x
+                env = [sample]
+            else:
+                env.append(sample)
+    for x in yield_env(env):
+        yield x
 
 
 def transform_viewpoint(v):
@@ -105,12 +108,18 @@ _DATASET_INFO = dict(
         sequence_size=11))
 
 
+def make_infinite(data):
+    while True:
+        for x in data:
+            yield x
+
+
 def split_name(dataset_name: str):
     split = dataset_name.rindex('-')
     return dataset_name[:split], dataset_name[split + 1:]
 
 
-def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=transform_viewpoint, max_samples_per_environment=-1):
+def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=transform_viewpoint, max_samples_per_environment=-1, infinite_dataset=True):
     dataset_name, split = split_name(name)
     assert dataset_name in _DATASET_INFO, f'Dataset {dataset_name} is not supported'
     assert split in ['test', 'train'], f'Split {split} is not supported'
@@ -122,7 +131,9 @@ def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=
     dataset = wds.Dataset(url)
     rng = random.Random(seed)
     dataset.rng = rng
-    dataset.reseed_hook = dataset.reseed_rng
+    dataset.reseed_hook = lambda: dataset.rng.seed(seed)
+    if infinite_dataset:
+        dataset = dataset.pipe(make_infinite)
     if shuffle:
         dataset.shard_shuffle = wds.dataset.Shuffler(rng)
     dataset = dataset.pipe(partial(sample_environment, sample_size=sample_size, environment_size=environment_size, shuffle=shuffle, rng=rng, max_samples_per_env=max_samples_per_environment))
@@ -134,48 +145,27 @@ def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=
     return dataset
 
 
-class InfiniteDataset(torch.utils.data.IterableDataset):
-    def __init__(self, dataset):
-        self.dataset = dataset
-        self.source = None
-
-    def __getstate__(self):
-        result = dict(self.__dict__)
-        result["source"] = None
-        return result
-
-    def __iter__(self):
-        if self.source is None:
-            self.source = iter(self.dataset)
-        while True:
-            try:
-                sample = next(self.source)
-            except StopIteration:
-                self.source = iter(self.dataset)
-                sample = next(self.source)
-            yield sample
-
-
 class GQNDataModule(pl.LightningDataModule):
-    def __init__(self, dataset: str = 'mazes', batch_size: int = 48, seed: int = 42, num_workers: int = 8, max_samples_per_environment: int = -1):
+    def __init__(self, dataset: str = 'mazes', batch_size: int = 48, seed: int = 42, num_workers: int = 8, max_samples_per_environment: int = -1, test_size=10):
         super().__init__()
         self.num_workers = num_workers
         self.seed = seed
         self.batch_size = batch_size
         self.dataset = dataset
         self.max_samples_per_environment = max_samples_per_environment
+        self.test_size = test_size
 
     def setup(self, stage=None):
         def shard_selection(shards):
             assert len(shards) >= self.trainer.world_size
-            return shards[self.trainer.global_rank::self.trainer.world_size]
+            shards = list(shards[self.trainer.global_rank::self.trainer.world_size])
+            shards = wds.worker_urls(shards)
+            return shards
 
         self.train_dataset = load_gqn_dataset(f'{self.dataset}-train', self.batch_size, seed=self.seed, shuffle=True, max_samples_per_environment=self.max_samples_per_environment)
         self.train_dataset.shard_selection = shard_selection
         self.test_dataset = load_gqn_dataset(f'{self.dataset}-test', self.batch_size, seed=self.seed, shuffle=False, max_samples_per_environment=self.max_samples_per_environment)
         self.test_dataset.shard_selection = shard_selection
-        self.train_dataset = InfiniteDataset(self.train_dataset)
-        self.test_dataset = InfiniteDataset(self.test_dataset)
 
     def train_dataloader(self):
         return DataLoader(self.train_dataset, num_workers=self.num_workers, pin_memory=True, batch_size=None)

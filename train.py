@@ -104,16 +104,16 @@ def main():
     if hasattr(trainer.logger.experiment, 'wandb_experiment') and \
             hasattr(trainer.logger.experiment.wandb_experiment, 'config'):
         trainer.logger.experiment.wandb_experiment.config.update(args, allow_val_change=True)
-    (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
+    # (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
     # Set update epoch hook for datasets
-    train_dataset = train_dataloader.dataset
-    _old_on_train_epoch_start = trainer.on_train_epoch_start
+    # train_dataset = train_dataloader.dataset
+    # _old_on_train_epoch_start = trainer.on_train_epoch_start
 
-    def on_train_epoch_start(*args, **kwargs):
-        train_dataset.inner.set_epoch(trainer.current_epoch)
-        _old_on_train_epoch_start(*args, **kwargs)
-    trainer.on_train_epoch_start = on_train_epoch_start
+    # def on_train_epoch_start(*args, **kwargs):
+    #     train_dataset.inner.set_epoch(trainer.current_epoch)
+    #     _old_on_train_epoch_start(*args, **kwargs)
+    # trainer.on_train_epoch_start = on_train_epoch_start
 
     # Start the training
     datamodule = GQNDataModule(**bind_arguments(args, GQNDataModule))
