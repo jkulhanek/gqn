@@ -74,10 +74,8 @@ def transform_batch(data, rng=random, target_transform=None):
 _DATASET_INFO = dict(
     mazes=dict(
         max_num_views=20,
-        # train_size=1080,
-        # test_size=120,
-        train_size=1,
-        test_size=1,
+        train_size=1080,
+        test_size=120,
         sequence_size=300),
     shepard_metzler_5_parts=dict(
         train_size=900,
