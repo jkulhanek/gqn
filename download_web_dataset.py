@@ -159,9 +159,9 @@ def preprocess_cameras(dataset_info, example, raw=True):
         pitch = raw_pose_params[:, 4:5]
         cameras = tf.concat(
             [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=-1)
-        return torch.from_numpy(cameras.numpy())
+        return cameras.numpy()
     else:
-        return torch.from_numpy(raw_pose_params.numpy())
+        return raw_pose_params.numpy()
 
 
 def _get_dataset_files(dataset_info, mode, root):
