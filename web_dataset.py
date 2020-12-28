@@ -23,20 +23,24 @@ def sample_environment(data, sample_size, environment_size, rng=random, shuffle=
             curr_sample_size = min(curr_sample_size, max_samples_per_env * sample_size)
         if curr_sample_size > 0:
             sample = rng.sample(env, curr_sample_size)
-            sample = rng.shuffle(sample)
+            rng.shuffle(sample)
             for i in range(len(env) // sample_size):
                 batch = sample[i * sample_size: (i + 1) * sample_size]
-                yield {k: [x[k] for x in batch] for k in batch.keys()}
+                yield {k: [x[k] for x in batch] for k in batch[0].keys()}
     while True:
         for sample in data:
             env_id = get_env_id(sample)
             if current_env is not None and env_id != current_env:
-                current_env = env_id
                 for x in yield_env(env):
                     yield x
                 env = [sample]
             else:
-                env.append(sample)
+                if len(env) == max_samples_per_env * sample_size:
+                    if shuffle:
+                        env[rng.randrange(len(env))] = sample
+                else:
+                    env.append(sample)
+            current_env = env_id
     for x in yield_env(env):
         yield x
 
@@ -119,7 +123,7 @@ def split_name(dataset_name: str):
     return dataset_name[:split], dataset_name[split + 1:]
 
 
-def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=transform_viewpoint, max_samples_per_environment=-1, infinite_dataset=True):
+def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=transform_viewpoint, max_samples_per_environment=-1):
     dataset_name, split = split_name(name)
     assert dataset_name in _DATASET_INFO, f'Dataset {dataset_name} is not supported'
     assert split in ['test', 'train'], f'Split {split} is not supported'
@@ -131,9 +135,7 @@ def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=
     dataset = wds.Dataset(url)
     rng = random.Random(seed)
     dataset.rng = rng
-    dataset.reseed_hook = lambda: dataset.rng.seed(seed)
-    if infinite_dataset:
-        dataset = dataset.pipe(make_infinite)
+    dataset.reseed_hook = dataset.reseed_rng
     if shuffle:
         dataset.shard_shuffle = wds.dataset.Shuffler(rng)
     dataset = dataset.pipe(partial(sample_environment, sample_size=sample_size, environment_size=environment_size, shuffle=shuffle, rng=rng, max_samples_per_env=max_samples_per_environment))
@@ -146,14 +148,14 @@ def load_gqn_dataset(name, batch_size, seed=42, shuffle=False, target_transform=
 
 
 class GQNDataModule(pl.LightningDataModule):
-    def __init__(self, dataset: str = 'mazes', batch_size: int = 48, seed: int = 42, num_workers: int = 8, max_samples_per_environment: int = -1, test_size=10):
+    def __init__(self, dataset: str = 'mazes', batch_size: int = 48, seed: int = 42, num_workers: int = 8, max_samples_per_environment: int = -1):
         super().__init__()
         self.num_workers = num_workers
         self.seed = seed
         self.batch_size = batch_size
         self.dataset = dataset
         self.max_samples_per_environment = max_samples_per_environment
-        self.test_size = test_size
+        self._train_reset_times = 0
 
     def setup(self, stage=None):
         def shard_selection(shards):
@@ -162,8 +164,13 @@ class GQNDataModule(pl.LightningDataModule):
             shards = wds.worker_urls(shards)
             return shards
 
+        def seed_train():
+            self._train_reset_times += 1
+            self.train_dataset.rng.seed(self._train_reset_times * 31 + 2 * self.seed)
+
         self.train_dataset = load_gqn_dataset(f'{self.dataset}-train', self.batch_size, seed=self.seed, shuffle=True, max_samples_per_environment=self.max_samples_per_environment)
         self.train_dataset.shard_selection = shard_selection
+        self.train_dataset.reseed_hook = seed_train
         self.test_dataset = load_gqn_dataset(f'{self.dataset}-test', self.batch_size, seed=self.seed, shuffle=False, max_samples_per_environment=self.max_samples_per_environment)
         self.test_dataset.shard_selection = shard_selection
 
@@ -175,3 +182,9 @@ class GQNDataModule(pl.LightningDataModule):
 
     def test_dataloader(self):
         return DataLoader(self.test_dataset, num_workers=self.num_workers, pin_memory=True, batch_size=None)
+
+
+if __name__ == '__main__':
+    dataset = load_gqn_dataset('mazes-train', 2, shuffle=True)
+    for b in zip(dataset, range(5)):
+        pass
