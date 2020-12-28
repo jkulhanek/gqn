@@ -27,20 +27,19 @@ def sample_environment(data, sample_size, environment_size, rng=random, shuffle=
             for i in range(len(env) // sample_size):
                 batch = sample[i * sample_size: (i + 1) * sample_size]
                 yield {k: [x[k] for x in batch] for k in batch[0].keys()}
-    while True:
-        for sample in data:
-            env_id = get_env_id(sample)
-            if current_env is not None and env_id != current_env:
-                for x in yield_env(env):
-                    yield x
-                env = [sample]
+    for sample in data:
+        env_id = get_env_id(sample)
+        if current_env is not None and env_id != current_env:
+            for x in yield_env(env):
+                yield x
+            env = [sample]
+        else:
+            if len(env) == max_samples_per_env * sample_size:
+                if shuffle:
+                    env[rng.randrange(len(env))] = sample
             else:
-                if len(env) == max_samples_per_env * sample_size:
-                    if shuffle:
-                        env[rng.randrange(len(env))] = sample
-                else:
-                    env.append(sample)
-            current_env = env_id
+                env.append(sample)
+        current_env = env_id
     for x in yield_env(env):
         yield x
 
@@ -186,5 +185,5 @@ class GQNDataModule(pl.LightningDataModule):
 
 if __name__ == '__main__':
     dataset = load_gqn_dataset('mazes-train', 2, shuffle=True)
-    for b in zip(dataset, range(5)):
+    for _ in zip(dataset, range(5)):
         pass
