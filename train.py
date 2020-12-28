@@ -11,6 +11,7 @@ from torch.utils.data import DataLoader
 from torch.utils.data.dataloader import default_collate
 import torch
 import logging_utils
+from web_dataset import GQNDataModule
 
 
 def build_data(
@@ -64,7 +65,7 @@ def build_trainer(
     if wandb:
         logger = logging_utils.WandbLogger(log_model=True, log_graph=log_graph)
     else:
-        logger = pl.loggers.TensorBoardLogger(log_graph=log_graph)
+        logger = pl.loggers.TensorBoardLogger(save_dir='gqn', log_graph=log_graph)
     kwargs = dict(num_nodes=num_nodes)
     if num_gpus > 0:
         kwargs.update(dict(gpus=num_gpus, accelerator='ddp'))
@@ -96,11 +97,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser = add_arguments(parser, GQNModel)
     parser = add_arguments(parser, build_trainer)
-    parser = add_arguments(parser, build_data)
+    parser = add_arguments(parser, GQNDataModule)
     args = parser.parse_args()
     model = GQNModel(**bind_arguments(args, GQNModel))
     trainer = build_trainer(**bind_arguments(args, build_trainer))
-    if hasattr(trainer.logger.experiment.wandb_experiment, 'config'):
+    if hasattr(trainer.logger.experiment, 'wandb_experiment') and \
+            hasattr(trainer.logger.experiment.wandb_experiment, 'config'):
         trainer.logger.experiment.wandb_experiment.config.update(args, allow_val_change=True)
     (train_dataloader, test_dataloader) = build_data(**bind_arguments(args, build_data))
 
@@ -114,7 +116,8 @@ def main():
     trainer.on_train_epoch_start = on_train_epoch_start
 
     # Start the training
-    trainer.fit(model, train_dataloader=train_dataloader, val_dataloaders=test_dataloader)
+    datamodule = GQNDataModule(**bind_arguments(args, GQNDataModule))
+    trainer.fit(model, datamodule=datamodule)
 
     # trainer.test(model, test_dataloader)
 

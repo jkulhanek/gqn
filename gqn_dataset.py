@@ -292,6 +292,7 @@ class GQNDataset(EnvironmentDataset):
         super().__init__([info.sequence_size] * find_dataset_size(self.root_dir))
 
     def get_sample(self, environment_idx, idx):
+        print(f'loading env: {environment_idx}')
         if os.path.exists(os.path.join(self.root_dir, f'{environment_idx}.pt')):
             scene_path = os.path.join(self.root_dir, f"{environment_idx}.pt")
             data = torch.load(scene_path)
@@ -304,6 +305,7 @@ class GQNDataset(EnvironmentDataset):
         # images = torch.stack([byte_to_tensor(frame) for frame in data.frames[idx]])
         # viewpoints = torch.from_numpy(data.cameras[:, idx])
         images = torch.stack([byte_to_tensor(frame) for frame in data['frames'][idx]])
+        print(f'loaded {len(images)} views')
         viewpoints = torch.from_numpy(data['cameras'][idx])
         viewpoints = viewpoints.view(-1, 5)
         if self.transform:

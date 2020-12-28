@@ -13,7 +13,7 @@ from pytorch_lightning.loggers.base import LightningLoggerBase, rank_zero_experi
 from pytorch_lightning.utilities import rank_zero_only, rank_zero_warn, OMEGACONF_AVAILABLE
 from pytorch_lightning.utilities.cloud_io import get_filesystem
 from pytorch_lightning.utilities.warning_utils import WarningCache
-from pytorch_lightning import Callback
+from pytorch_lightning import Callback, Trainer
 from torchvision.utils import make_grid
 
 if OMEGACONF_AVAILABLE:
@@ -260,14 +260,17 @@ class LogImageCallback(Callback):
         self.grid_size = grid_size
         super().__init__()
 
-    def on_validation_batch_end(self, trainer, model, model_output, batch, batch_idx, *args, **kwargs):
+    @rank_zero_only
+    def on_validation_batch_end(self, trainer: Trainer, model, model_output, batch, batch_idx, *args, **kwargs):
         if 'generated_image' not in model_output:
             return
 
-        if trainer.global_rank != 0:
-            return
+        assert trainer.global_rank == 0
 
-        batch_size = trainer.val_dataloaders[0].batch_size
+        if trainer.datamodule is not None and hasattr(trainer.datamodule, 'batch_size'):
+            batch_size = trainer.datamodule.batch_size
+        else:
+            batch_size = trainer.val_dataloaders[0].batch_size
         generated_images = batch_idx * batch_size
         if generated_images >= self.num_validation_images:
             return
