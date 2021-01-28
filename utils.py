@@ -101,7 +101,7 @@ def add_arguments(parser, function_or_cls):
         if getattr(getattr(annotation, '__origin__', None), '_name', None) == 'Literal':
             parser.add_argument(f'--{name}', type=type(annotation.__args__[0]), choices=annotation.__args__, default=p.default, help=f'{help} [{p.default}]')
         elif isinstance(p.default, bool):
-            parser.set_defaults(**{name: p.default})
+            parser.set_defaults(**{p.name: p.default})
             parser.add_argument(f'--{name}', dest=p.name, action='store_true', help=f'{help} [{p.default}]')
             parser.add_argument(f'--no-{name}', dest=p.name, action='store_false', help=f'{help} [{p.default}]')
         elif annotation in [int, float, str]:

@@ -9,7 +9,6 @@ import tensorflow as tf
 from tqdm import tqdm
 import webdataset as wds
 import shutil
-import torch
 import json
 from web_dataset import _DATASET_INFO
 
@@ -88,7 +87,7 @@ def find_dataset_size(path):
     return usize
 
 
-def download_dataset(name, compress, image_size):
+def download_dataset(name, image_size):
     path = os.path.join(DATASET_PATH, f'{name}-wd')
     os.makedirs(path, exist_ok=True)
     storage_client = storage.Client.create_anonymous_client()
@@ -159,9 +158,9 @@ def preprocess_cameras(dataset_info, example, raw=True):
         pitch = raw_pose_params[:, 4:5]
         cameras = tf.concat(
             [pos, tf.sin(yaw), tf.cos(yaw), tf.sin(pitch), tf.cos(pitch)], axis=-1)
-        return cameras.numpy()
+        return cameras
     else:
-        return raw_pose_params.numpy()
+        return raw_pose_params
 
 
 def _get_dataset_files(dataset_info, mode, root):
@@ -201,12 +200,11 @@ def show_frame(frames, scene, views):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dataset', choices=list(_DATASETS.keys()) + ['all'])
-    parser.add_argument('--decompress', action='store_true', help='Decompress for faster training')
     parser.add_argument('--image-size', default=64, type=float)
     args = parser.parse_args()
     dataset = args.dataset
     if dataset == 'all':
         for k in _DATASETS.keys():
-            download_dataset(k, not args.decompress, args.image_size)
+            download_dataset(k, args.image_size)
     else:
-        download_dataset(dataset, not args.decompress, args.image_size)
+        download_dataset(dataset, args.image_size)
